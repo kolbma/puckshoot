@@ -1,0 +1,433 @@
+[gd_scene load_steps=18 format=2]
+
+[sub_resource type="PhysicsMaterial" id=1]
+friction = 0.0
+bounce = 1.0
+
+[sub_resource type="RectangleShape2D" id=2]
+extents = Vector2( 6000, 10 )
+
+[sub_resource type="GDScript" id=3]
+script/source = "extends Control
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass
+
+#func startup():
+#	var rnd = RandomNumberGenerator.new()
+#	rnd.randomize()
+#	rect_position.x = rnd.randi_range(200, 600)
+#	rect_position.y = rnd.randi_range(20, 400)
+#	print_debug(\"puckCtrl \", rect_position)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#func _process(delta):
+#	pass
+"
+
+[sub_resource type="PhysicsMaterial" id=4]
+friction = 0.0
+bounce = 100.0
+
+[sub_resource type="GDScript" id=5]
+script/source = "extends RigidBody2D
+
+var difficulty = 0
+var round_points = 10
+var restart = false
+var last_hit_x1 = 0
+var last_hit_x2 = 0
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	difficulty = 959
+	Global.AI.set_handicap(40)
+	Global.AI.set_difficulty(difficulty)
+	Global.AI.set_window_size(OS.window_size.x, OS.window_size.y)
+	startup()
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta):
+	Global.AI.puck_position = position
+	#print_debug(\"puck position \", Global.AI.puck_position)
+	pass
+
+func _integrate_forces(state):
+	if restart:
+		restart = false
+		last_hit_x1 = 0
+		last_hit_x2 = 0
+		stopMoving(state)
+		#print_debug(\"puck start \", position)
+		#print_debug(\"puck position \", Global.AI.puck_position)
+		startup()
+
+func startup():
+	var ws = OS.window_size;
+	transform.origin = Vector2(ws.x / 2, ws.y / 2)
+
+	var rnd = RandomNumberGenerator.new()
+	rnd.randomize()
+	
+	var force_x = (rnd.randi_range(1, 2) * 2 - 3) * difficulty
+	var force_y = (rnd.randi_range(1, 2) * 2 - 3) * 2 * difficulty
+	linear_velocity.x = force_x
+	linear_velocity.y = force_y
+	Global.AI.puck_velocity = linear_velocity
+	#print_debug(\"puck velocity \", Global.AI.puck_velocity)
+
+func stopMoving(state: Physics2DDirectBodyState):
+	state.linear_velocity = Vector2(0, 0)
+	var ws = OS.window_size;
+	state.transform.origin = Vector2(ws.x / 2, ws.y / 2)
+
+#warning-ignore:unused_argument
+func _on_RightWall_body_entered(body):
+	print_debug(\"puck right enter\")
+	Global.hit_points_l(round_points)
+	restart = true
+
+#warning-ignore:unused_argument
+func _on_LeftWall_body_entered(body):
+	print_debug(\"puck left enter\")
+	Global.hit_points_r(round_points)
+	restart = true
+
+func _on_Puck_body_entered(body):
+	if body is KinematicBody2D and body.has_method(\"hit\"):
+		body.hit()
+	if body is StaticBody2D:
+		var x = position.x
+		if x == last_hit_x1 and last_hit_x1 == last_hit_x2:
+			restart = true
+		last_hit_x2 = last_hit_x1
+		last_hit_x1 = x
+	Global.AI.puck_velocity = linear_velocity
+	#print_debug(\"puck velocity \", Global.AI.puck_velocity)
+"
+
+[sub_resource type="CircleShape2D" id=6]
+radius = 30.0
+
+[sub_resource type="GDScript" id=7]
+script/source = "extends CollisionShape2D
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#warning-ignore:unused_argument
+func _process(delta):
+	pass
+
+func _on_CollisionShape2D_draw():
+	draw_circle(Vector2(0, 0), 30, Color(1, 0, 0))
+"
+
+[sub_resource type="GDScript" id=8]
+script/source = "extends KinematicBody2D
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+const speed = 0
+
+var g_y = 0
+var ai = true
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	if !ai:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	pass
+
+func _input(event):
+	if !ai and speed == 0 and event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
+		g_y = event.relative.y
+		#print_debug(\"mouse: \", g_y)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#warning-ignore:unused_argument
+func _physics_process(delta):
+	if speed > 0:
+		var y = position.y
+		if y > 100:
+			y = -speed
+		elif y < -100:
+			y = speed
+		elif g_y <= y:
+			y = speed
+		elif g_y >= y:
+			y = -speed
+		g_y = position.y
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, y))
+	elif g_y != 0:
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, g_y))
+		g_y = 0
+	elif ai && Global.AI:
+		g_y = Global.AI.get_y_left()
+		#print_debug(\"g_y: \", g_y)
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, g_y))
+		Global.AI.reflector_left_y = position.y
+		#if Global.AI.reflector_left_y >= 0:
+		#	print_debug(\"g_y: \", g_y)
+		#	print_debug(\"refl_left_y: \", Global.AI.reflector_left_y)
+		g_y = 0
+
+func hit():
+	Global.hit_l()
+	print_debug(\"Hits Left: \", Global.hits_l())
+"
+
+[sub_resource type="RectangleShape2D" id=9]
+extents = Vector2( 10, 100 )
+
+[sub_resource type="Gradient" id=10]
+offsets = PoolRealArray( 1 )
+colors = PoolColorArray( 1, 1, 1, 1 )
+
+[sub_resource type="GradientTexture" id=11]
+gradient = SubResource( 10 )
+width = 10
+
+[sub_resource type="GDScript" id=12]
+script/source = "extends KinematicBody2D
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+const speed = 0
+
+var g_y = 0
+var ai = true
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	if !ai:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	pass # Replace with function body.
+
+func _input(event):
+	if !ai and speed == 0 and event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
+		g_y = event.relative.y
+		#print_debug(\"mouse: \", g_y)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#warning-ignore:unused_argument
+func _physics_process(delta):
+	if speed > 0:
+		var y = position.y
+		if y > 100:
+			y = -speed
+		elif y < -100:
+			y = speed
+		elif g_y <= y:
+			y = speed
+		elif g_y >= y:
+			y = -speed
+		g_y = position.y
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, y))
+	elif g_y != 0:
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, g_y))
+		g_y = 0
+	elif ai && Global.AI:
+		g_y = Global.AI.get_y_right()
+		#print_debug(\"g_y: \", g_y)
+#warning-ignore:unused_variable
+		var collision = move_and_collide(Vector2(0, g_y))
+		Global.AI.reflector_right_y = position.y
+		#if Global.AI.reflector_right_y >= 0:
+		#	print_debug(\"g_y: \", g_y)
+		#	print_debug(\"refl_right_y: \", Global.AI.reflector_right_y)
+		g_y = 0
+
+func hit():
+	Global.hit_r()
+	print_debug(\"Hits Right: \", Global.hits_r())
+"
+
+[sub_resource type="RectangleShape2D" id=13]
+extents = Vector2( 6000, 10 )
+
+[sub_resource type="GDScript" id=14]
+script/source = "extends Area2D
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#func _process(delta):
+#	pass
+"
+
+[sub_resource type="RectangleShape2D" id=15]
+extents = Vector2( 10, 4000 )
+
+[sub_resource type="GDScript" id=16]
+script/source = "extends Area2D
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#func _process(delta):
+#	pass
+"
+
+[sub_resource type="RectangleShape2D" id=17]
+extents = Vector2( 10, 4000 )
+
+[node name="Board" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="TopWall" type="StaticBody2D" parent="."]
+position = Vector2( 512, 0 )
+physics_material_override = SubResource( 1 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TopWall"]
+shape = SubResource( 2 )
+
+[node name="PuckCtrl" type="Control" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+script = SubResource( 3 )
+
+[node name="Puck" type="RigidBody2D" parent="PuckCtrl"]
+modulate = Color( 1, 0, 0, 1 )
+self_modulate = Color( 1, 0, 0, 1 )
+collision_layer = 3
+collision_mask = 3
+physics_material_override = SubResource( 4 )
+contacts_reported = 1
+contact_monitor = true
+can_sleep = false
+linear_damp = 0.0
+angular_damp = 0.0
+script = SubResource( 5 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuckCtrl/Puck"]
+modulate = Color( 1, 0, 0, 1 )
+self_modulate = Color( 1, 0, 0, 1 )
+shape = SubResource( 6 )
+script = SubResource( 7 )
+
+[node name="ReflectorLCtrl" type="Control" parent="."]
+anchor_top = 0.5
+anchor_bottom = 0.5
+
+[node name="ReflectorLeft" type="KinematicBody2D" parent="ReflectorLCtrl"]
+position = Vector2( 50, 0 )
+script = SubResource( 8 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ReflectorLCtrl/ReflectorLeft"]
+modulate = Color( 1, 0, 0, 1 )
+self_modulate = Color( 1, 0, 0, 1 )
+shape = SubResource( 9 )
+
+[node name="Sprite" type="Sprite" parent="ReflectorLCtrl/ReflectorLeft/CollisionShape2D"]
+position = Vector2( 9.53674e-07, 3.8147e-06 )
+scale = Vector2( 2, 200 )
+texture = SubResource( 11 )
+
+[node name="ReflectorRCtrl" type="Control" parent="."]
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+
+[node name="ReflectorRight" type="KinematicBody2D" parent="ReflectorRCtrl"]
+position = Vector2( -50, 0 )
+script = SubResource( 12 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ReflectorRCtrl/ReflectorRight"]
+modulate = Color( 1, 0, 0, 1 )
+self_modulate = Color( 1, 0, 0, 1 )
+shape = SubResource( 9 )
+
+[node name="Sprite" type="Sprite" parent="ReflectorRCtrl/ReflectorRight/CollisionShape2D"]
+position = Vector2( 9.53674e-07, 3.8147e-06 )
+scale = Vector2( 2, 200 )
+texture = SubResource( 11 )
+
+[node name="BottomControl" type="Control" parent="."]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="BottomWall" type="StaticBody2D" parent="BottomControl"]
+position = Vector2( 512, 0 )
+physics_material_override = SubResource( 1 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="BottomControl/BottomWall"]
+shape = SubResource( 13 )
+
+[node name="LeftControl" type="Control" parent="."]
+anchor_top = 0.5
+anchor_bottom = 0.5
+margin_top = -300.0
+margin_bottom = 300.0
+
+[node name="LeftWall" type="Area2D" parent="LeftControl"]
+position = Vector2( 0, 300 )
+gravity_vec = Vector2( 0, 0 )
+gravity = 0.0
+linear_damp = 0.0
+angular_damp = 0.0
+collision_layer = 2
+collision_mask = 2
+script = SubResource( 14 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftControl/LeftWall"]
+shape = SubResource( 15 )
+
+[node name="RightControl" type="Control" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="RightWall" type="Area2D" parent="RightControl"]
+position = Vector2( 0, 300 )
+gravity_vec = Vector2( 0, 0 )
+gravity = 0.0
+linear_damp = 0.0
+angular_damp = 0.0
+collision_layer = 2
+collision_mask = 2
+script = SubResource( 16 )
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightControl/RightWall"]
+shape = SubResource( 17 )
+[connection signal="body_entered" from="PuckCtrl/Puck" to="PuckCtrl/Puck" method="_on_Puck_body_entered"]
+[connection signal="draw" from="PuckCtrl/Puck/CollisionShape2D" to="PuckCtrl/Puck/CollisionShape2D" method="_on_CollisionShape2D_draw"]
+[connection signal="body_entered" from="LeftControl/LeftWall" to="PuckCtrl/Puck" method="_on_LeftWall_body_entered"]
+[connection signal="body_entered" from="RightControl/RightWall" to="PuckCtrl/Puck" method="_on_RightWall_body_entered"]
